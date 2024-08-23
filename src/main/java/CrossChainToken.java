@@ -54,9 +54,9 @@ public class CrossChainToken extends Ownable implements Contract, Token {
     }
 
     private static final BigInteger MULTIPLIER   = BigInteger.valueOf(1000000000L); // Multiplier to guarantee math safety in gwei, everything else is neglectable
-    public  BigInteger              dividendPerToken;                               //Dividends per share/token
-    public Map<Address, BigInteger> xDividendPerToken = new HashMap<>();            //Last user dividends essential to calculate future rewards
-    public Map<Address, BigInteger> credit = new HashMap<>();
+    private  BigInteger              dividendPerToken;                               //Dividends per share/token
+    private Map<Address, BigInteger> xDividendPerToken = new HashMap<>();            //Last user dividends essential to calculate future rewards
+    private Map<Address, BigInteger> credit = new HashMap<>();
 
     public CrossChainToken(@Required String name, @Required String symbol, @Required BigInteger initialAmount, @Required int decimals) {
         this.name = name;
@@ -64,6 +64,7 @@ public class CrossChainToken extends Ownable implements Contract, Token {
         this.decimals = decimals;
         totalSupply = initialAmount.multiply(BigInteger.TEN.pow(decimals));;
         balances.put(Msg.sender(), totalSupply);
+        dividendPerToken = BigInteger.ZERO;
         emit(new TransferEvent(null, Msg.sender(), totalSupply));
     }
 
@@ -83,6 +84,8 @@ public class CrossChainToken extends Ownable implements Contract, Token {
 
     @Override
     public boolean transferFrom(@Required Address from, @Required Address to, @Required BigInteger value) {
+        claimDividends(from);
+        claimDividends(to);
         subtractAllowed(from, Msg.sender(), value);
         subtractBalance(from, value);
         addBalance(to, value);
@@ -103,6 +106,8 @@ public class CrossChainToken extends Ownable implements Contract, Token {
 
     @Override
     public boolean transfer(@Required Address to, @Required BigInteger value) {
+        claimDividends(Msg.sender());
+        claimDividends(to);
         subtractBalance(Msg.sender(), value);
         addBalance(to, value);
         emit(new TransferEvent(Msg.sender(), to, value));
@@ -149,6 +154,8 @@ public class CrossChainToken extends Ownable implements Contract, Token {
      */
     @Payable
     public boolean transferCrossChain(@Required String to, @Required BigInteger value) {
+        claimDividends(Msg.sender());
+        claimDividends(new Address(to));
         Address from = Msg.sender();
         // 授权系统合约可使用转出者的token资产(跨链部分)
         this.approve(crossTokenSystemContract(), value);
@@ -243,6 +250,10 @@ public class CrossChainToken extends Ownable implements Contract, Token {
 
     private void claimDividends(Address account){
 
+        if(xDividendPerToken.get(account) == null){
+            xDividendPerToken.put(account, BigInteger.ZERO);
+        }
+
         BigInteger amount             = ( (dividendPerToken.subtract(xDividendPerToken.get(account))).multiply(balanceOf(account)).divide(MULTIPLIER) );
         xDividendPerToken.put(account, dividendPerToken);
 
@@ -252,8 +263,9 @@ public class CrossChainToken extends Ownable implements Contract, Token {
 
         if(amount.compareTo(BigInteger.ZERO) > 0){
 
-            if((amount.add(credit.get(account))).compareTo(BigInteger.valueOf(1000000)) >= 0){
-                account.transfer(amount.add(credit.get(account)));
+            BigInteger amountPlusCredit = amount.add(credit.get(account));
+            if(amountPlusCredit.compareTo(BigInteger.valueOf(1000000)) >= 0){
+                account.transfer(amountPlusCredit);
                 credit.put(account, BigInteger.ZERO);
 
             }else{
@@ -261,6 +273,25 @@ public class CrossChainToken extends Ownable implements Contract, Token {
              }
 
         }
+    }
+
+    @View
+    public BigInteger getDividendPerToken(){
+        return dividendPerToken;
+    }
+
+    @View
+    public BigInteger getDividendPerWallet(Address addr){
+        if(xDividendPerToken.get(addr) == null)
+            return BigInteger.ZERO;
+        return xDividendPerToken.get(addr);
+    }
+
+    @View
+    public BigInteger getCreditWallet(Address addr){
+        if(credit.get(addr) == null)
+            return BigInteger.ZERO;
+        return credit.get(addr);
     }
 
 }
