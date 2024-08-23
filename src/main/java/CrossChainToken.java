@@ -226,30 +226,41 @@ public class CrossChainToken extends Ownable implements Contract, Token {
         return CROSS_TOKEN_SYSTEM_CONTRACT;
     }
 
+    @Payable
+    public void distributionRewards(BigInteger amount){
+
+        require(amount.compareTo(BigInteger.ZERO) > 0, "Amount too low");
+        require(Msg.value().compareTo(amount) >=0, "Invalid Amount");
+
+        BigInteger newDividend = amount.multiply(MULTIPLIER).divide(totalSupply);
+        dividendPerToken =  dividendPerToken.add(newDividend);
+
+    }
+
     public void claimDividensExternal(Address acc){
         claimDividends(acc);
     }
 
     private void claimDividends(Address account){
 
-        BigInteger amount             = ( (BigInteger.valueOf(dividendPerToken).subtract(BigInteger.valueOf(xDividendPerToken[account]))).multiply(balanceOf(account)).divide(MULTIPLIER) );
+        BigInteger amount             = ( (dividendPerToken.subtract(xDividendPerToken.get(account))).multiply(balanceOf(account)).divide(MULTIPLIER) );
         xDividendPerToken.put(account, dividendPerToken);
+
+        if(credit.get(account) == null){
+            credit.put(account, BigInteger.ZERO);
+        }
 
         if(amount.compareTo(BigInteger.ZERO) > 0){
 
-            if((amount.add(credit.get(account))).compareTo(BigInteger.valueOf(1000000) >= 0){
-                account.transfer(amount);
+            if((amount.add(credit.get(account))).compareTo(BigInteger.valueOf(1000000)) >= 0){
+                account.transfer(amount.add(credit.get(account)));
                 credit.put(account, BigInteger.ZERO);
 
             }else{
-
-                if(credit == null)
-                    credit.put(account, amount)
-                else
                     credit.put(account, credit.get(account).add(amount));
              }
 
-            }
+        }
     }
 
 }
