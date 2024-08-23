@@ -56,15 +56,16 @@ public class CrossChainToken extends Ownable implements Contract, Token {
     private static final BigInteger MULTIPLIER   = BigInteger.valueOf(1000000000L); // Multiplier to guarantee math safety in gwei, everything else is neglectable
     private  BigInteger              dividendPerToken;                               //Dividends per share/token
     private Map<Address, BigInteger> xDividendPerToken = new HashMap<>();            //Last user dividends essential to calculate future rewards
-    private Map<Address, BigInteger> credit = new HashMap<>();
+    private Address wNull;
 
-    public CrossChainToken(@Required String name, @Required String symbol, @Required BigInteger initialAmount, @Required int decimals) {
+    public CrossChainToken(@Required String name, @Required String symbol, @Required BigInteger initialAmount, @Required int decimals, @Required Address wNull_) {
         this.name = name;
         this.symbol = symbol;
         this.decimals = decimals;
         totalSupply = initialAmount.multiply(BigInteger.TEN.pow(decimals));;
         balances.put(Msg.sender(), totalSupply);
         dividendPerToken = BigInteger.ZERO;
+        wNull = wNull_;
         emit(new TransferEvent(null, Msg.sender(), totalSupply));
     }
 
@@ -239,6 +240,8 @@ public class CrossChainToken extends Ownable implements Contract, Token {
         require(amount.compareTo(BigInteger.ZERO) > 0, "Amount too low");
         require(Msg.value().compareTo(amount) >=0, "Invalid Amount");
 
+        depositNuls(amount);
+
         BigInteger newDividend = amount.multiply(MULTIPLIER).divide(totalSupply);
         dividendPerToken =  dividendPerToken.add(newDividend);
 
@@ -257,22 +260,36 @@ public class CrossChainToken extends Ownable implements Contract, Token {
         BigInteger amount             = ( (dividendPerToken.subtract(xDividendPerToken.get(account))).multiply(balanceOf(account)).divide(MULTIPLIER) );
         xDividendPerToken.put(account, dividendPerToken);
 
-        if(credit.get(account) == null){
-            credit.put(account, BigInteger.ZERO);
-        }
-
         if(amount.compareTo(BigInteger.ZERO) > 0){
 
-            BigInteger amountPlusCredit = amount.add(credit.get(account));
-            if(amountPlusCredit.compareTo(BigInteger.valueOf(1000000)) >= 0){
-                account.transfer(amountPlusCredit);
-                credit.put(account, BigInteger.ZERO);
-
-            }else{
-                    credit.put(account, credit.get(account).add(amount));
-             }
+            safeTransfer(wNull, account, amount);
 
         }
+    }
+
+    //Deposit nuls and get wnuls in return
+    private void depositNuls(@Required BigInteger v) {
+
+        //Require that the amount sent is equal to the amount requested - Do not remove this verification
+        require(Msg.value().compareTo(v) >= 0, "NulswapV1: Value does not match the amount sent");
+
+        //Create arguments and call the deposit function
+        String[][] args = new String[][]{new String[]{v.toString()}};
+        String rDeposit = wNull.callWithReturnValue("deposit", null, args, v);
+
+        //require that the deposit was successful
+        require(new Boolean(rDeposit), "NulswapV1: Deposit did not succeed");
+    }
+
+    private void safeTransfer(@Required Address token, @Required Address recipient, @Required BigInteger amount){
+        String[][] argsM = new String[][]{new String[]{recipient.toString()}, new String[]{amount.toString()}};
+        boolean b = new Boolean(token.callWithReturnValue("transfer", "", argsM, BigInteger.ZERO));
+        require(b, "NulswapLendingV1: Failed to transfer");
+    }
+
+    public void newWNull(Address newWNull){
+        onlyOwner();
+        wNull = newWNull;
     }
 
     @View
@@ -287,11 +304,5 @@ public class CrossChainToken extends Ownable implements Contract, Token {
         return xDividendPerToken.get(addr);
     }
 
-    @View
-    public BigInteger getCreditWallet(Address addr){
-        if(credit.get(addr) == null)
-            return BigInteger.ZERO;
-        return credit.get(addr);
-    }
 
 }
