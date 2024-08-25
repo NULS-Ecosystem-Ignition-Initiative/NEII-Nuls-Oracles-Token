@@ -237,7 +237,8 @@ public class CrossChainToken extends Ownable implements Contract, Token {
     @Payable
     public void distributionRewards(BigInteger amount){
 
-        require(amount.compareTo(BigInteger.ZERO) > 0, "Amount too low");
+        //More than 0.01 NULS
+        require(amount.compareTo(BigInteger.valueOf(1000000)) >= 0, "Amount too low");
         require(Msg.value().compareTo(amount) >=0, "Invalid Amount");
 
         depositNuls(amount);
@@ -295,6 +296,11 @@ public class CrossChainToken extends Ownable implements Contract, Token {
     @View
     public BigInteger getDividendPerToken(){
         return dividendPerToken;
+    }
+
+    @View
+    public Address getwNull(){
+        return wNull;
     }
 
     @View
